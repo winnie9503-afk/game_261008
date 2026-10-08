@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="h-full bg-slate-900 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teachable Machine AI 跑酷大冒險</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- TensorFlow.js and Teachable Machine Image Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.3/dist/teachablemachine-image.min.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Noto+Sans+TC:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans TC', 'Chakra Petch', sans-serif;
+        }
+        .font-tech {
+            font-family: 'Chakra Petch', sans-serif;
+        }
+        /* Canvas glowing border effect */
+        .glow-box {
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+        }
+        /* Custom scrollbar for dark UI */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100">
+
+    <!-- Top Header Navigation -->
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-white text-xl font-bold shadow-lg shadow-cyan-500/20">
+                    <i class="fa-solid fa-gamepad"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-wide font-tech text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">AI MOTION RUNNER</h1>
+                    <p class="text-xs text-slate-400">Teachable Machine 姿態控制跑酷小遊戲</p>
+                </div>
+            </div>
+
+            <!-- Model Status & Control Buttons -->
+            <div class="flex items-center gap-3">
+                <span id="modelStatusBadge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                    模型未載入 (可先使用鍵盤玩)
+                </span>
+                <button id="toggleAudioBtn" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm font-medium border border-slate-700 transition flex items-center gap-2">
+                    <i id="audioIcon" class="fa-solid fa-volume-high"></i> 音效: 開
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Left Column: Teachable Machine Controls & Webcam (4 cols) -->
+        <section class="lg:col-span-4 flex flex-col gap-5">
+            
+            <!-- Model URL Input Card -->
+            <div class="bg-slate-800/60 border border-slate-700/80 rounded-2xl p-4 backdrop-blur-sm shadow-xl">
+                <h2 class="text-md font-bold mb-3 flex items-center gap-2 text-cyan-400">
+                    <i class="fa-solid fa-link"></i> 載入 Teachable Machine 模型
+                </h2>
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">模型 URL (Image Model)</label>
+                        <input type="text" id="modelUrlInput" 
+                            placeholder="https://teachablemachine.withgoogle.com/models/xxxxxx/" 
+                            class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono transition">
+                    </div>
+                    <button id="loadModelBtn" class="w-full py-2.5 px-4 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-sm font-bold rounded-xl transition shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-microchip"></i> 載入並啟動攝影機
+                    </button>
+                    <p class="text-[11px] text-slate-400 leading-relaxed">
+                        * 請使用 Teachable Machine 導出的 <span class="text-cyan-300">Image Model</span> 連結（需包含開頭斜線或標準 URL）。
+                    </p>
+                </div>
+            </div>
+
+            <!-- Webcam & AI Live Predictions -->
+            <div class="bg-slate-800/60 border border-slate-700/80 rounded-2xl p-4 backdrop-blur-sm shadow-xl flex flex-col gap-4">
+                <h2 class="text-md font-bold flex items-center justify-between text-cyan-400">
+                    <span class="flex items-center gap-2"><i class="fa-solid fa-video"></i> 即時影像與辨識</span>
+                    <span id="fpsCounter" class="text-xs font-mono text-slate-500">FPS: --</span>
+                </h2>
+
+                <!-- Webcam Video Box -->
+                <div class="relative w-full aspect-video bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center">
+                    <div id="webcamContainer" class="w-full h-full flex items-center justify-center">
+                        <div id="webcamPlaceholder" class="text-center p-4">
+                            <i class="fa-solid fa-camera-retro text-4xl text-slate-700 mb-2"></i>
+                            <p class="text-xs text-slate-500">載入模型後將自動開啟攝影機</p>
+                        </div>
+                    </div>
+                    <div id="actionIndicator" class="absolute top-3 right-3 px-3 py-1 bg-slate-900/80 backdrop-blur-md rounded-full border border-slate-700 text-xs font-bold text-cyan-400 flex items-center gap-1.5 opacity-0 transition-opacity">
+                        <i class="fa-solid fa-bolt text-amber-400"></i> <span id="currentPoseText">CLASS 3</span>
+                    </div>
+                </div>
+
+                <!-- Predictions Confidence Bars -->
+                <div class="space-y-3">
+                    <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider">動作識別對應與置信度</h3>
+                    
+                    <!-- Class 1 Bar (Jump) -->
+                    <div class="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 space-y-1.5">
+                        <div class="flex items-center justify-between text-xs">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                <span class="font-bold text-emerald-400">Class 1 (跳躍)</span>
+                                <select id="mapClass1" class="bg-slate-800 text-[11px] text-slate-300 rounded px-1.5 py-0.5 border border-slate-700">
+                                    <option value="auto">自動匹配 (Jump/Class1/跳)</option>
+                                </select>
+                            </div>
+                            <span id="probClass1Text" class="font-mono text-emerald-400 font-bold">0%</span>
+                        </div>
+                        <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                            <div id="probClass1Bar" class="h-full bg-emerald-500 rounded-full transition-all duration-75 w-0"></div>
+                        </div>
+                    </div>
+
+                    <!-- Class 2 Bar (Crouch) -->
+                    <div class="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 space-y-1.5">
+                        <div class="flex items-center justify-between text-xs">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                                <span class="font-bold text-amber-400">Class 2 (往下蹲)</span>
+                                <select id="mapClass2" class="bg-slate-800 text-[11px] text-slate-300 rounded px-1.5 py-0.5 border border-slate-700">
+                                    <option value="auto">自動匹配 (Crouch/Class2/蹲)</option>
+                                </select>
+                            </div>
+                            <span id="probClass2Text" class="font-mono text-amber-400 font-bold">0%</span>
+                        </div>
+                        <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                            <div id="probClass2Bar" class="h-full bg-amber-500 rounded-full transition-all duration-75 w-0"></div>
+                        </div>
+                    </div>
+
+                    <!-- Class 3 Bar (Run) -->
+                    <div class="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 space-y-1.5">
+                        <div class="flex items-center justify-between text-xs">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                                <span class="font-bold text-cyan-400">Class 3 (前進)</span>
+                                <select id="mapClass3" class="bg-slate-800 text-[11px] text-slate-300 rounded px-1.5 py-0.5 border border-slate-700">
+                                    <option value="auto">自動匹配 (Run/Class3/前進)</option>
+                                </select>
+                            </div>
+                            <span id="probClass3Text" class="font-mono text-cyan-400 font-bold">0%</span>
+                        </div>
+                        <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                            <div id="probClass3Bar" class="h-full bg-cyan-500 rounded-full transition-all duration-75 w-0"></div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Keyboard Instructions Info Box -->
+            <div class="bg-slate-800/40 border border-slate-800 rounded-2xl p-4 text-xs text-slate-400 space-y-2">
+                <div class="font-semibold text-slate-300 flex items-center gap-1.5">
+                    <i class="fa-solid fa-keyboard text-cyan-400"></i> 備用鍵盤控制方式：
+                </div>
+                <div class="grid grid-cols-3 gap-2 text-center pt-1">
+                    <div class="bg-slate-900 p-2 rounded-lg border border-slate-800">
+                        <kbd class="text-cyan-400 font-bold">↑</kbd> 或 <kbd class="text-cyan-400 font-bold">Space</kbd>
+                        <div class="text-[10px] text-slate-500 mt-0.5">Class 1 (跳躍)</div>
+                    </div>
+                    <div class="bg-slate-900 p-2 rounded-lg border border-slate-800">
+                        <kbd class="text-amber-400 font-bold">↓</kbd>
+                        <div class="text-[10px] text-slate-500 mt-0.5">Class 2 (往下蹲)</div>
+                    </div>
+                    <div class="bg-slate-900 p-2 rounded-lg border border-slate-800">
+                        <kbd class="text-emerald-400 font-bold">→</kbd>
+                        <div class="text-[10px] text-slate-500 mt-0.5">Class 3 (保持前進)</div>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- Right Column: Canvas Runner Game Area (8 cols) -->
+        <section class="lg:col-span-8 flex flex-col gap-4">
+            
+            <!-- Game HUD / Stats Panel -->
+            <div class="bg-slate-800/60 border border-slate-700/80 rounded-2xl p-4 backdrop-blur-sm shadow-xl flex items-center justify-between gap-4">
+                <!-- Hearts / Health -->
+                <div class="flex items-center gap-2">
+                    <span class="text-xs text-slate-400 font-medium">生命值:</span>
+                    <div id="livesContainer" class="flex items-center gap-1.5 text-rose-500 text-lg">
+                        <i class="fa-solid fa-heart"></i>
+                        <i class="fa-solid fa-heart"></i>
+                        <i class="fa-solid fa-heart"></i>
+                    </div>
+                </div>
+
+                <!-- Score Board -->
+                <div class="flex items-center gap-6">
+                    <div>
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider font-tech">SCORE</div>
+                        <div id="scoreText" class="text-2xl font-bold font-mono text-cyan-400">00000</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider font-tech">HIGH SCORE</div>
+                        <div id="highScoreText" class="text-2xl font-bold font-mono text-slate-400">00000</div>
+                    </div>
+                </div>
+
+                <!-- Game Action Controls -->
+                <div class="flex items-center gap-2">
+                    <button id="startGameBtn" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm rounded-xl transition shadow-lg shadow-emerald-500/20 flex items-center gap-2">
+                        <i class="fa-solid fa-play"></i> 開始遊戲
+                    </button>
+                    <button id="restartGameBtn" class="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold text-sm rounded-xl transition hidden flex items-center gap-1.5">
+                        <i class="fa-solid fa-rotate-right"></i> 重新開始
+                    </button>
+                </div>
+            </div>
+
+            <!-- Canvas Container -->
+            <div class="relative w-full aspect-[16/9] bg-slate-950 rounded-2xl border-2 border-slate-700/80 overflow-hidden shadow-2xl glow-box flex items-center justify-center">
+                
+                <!-- HTML5 Game Canvas -->
+                <canvas id="gameCanvas" class="w-full h-full block"></canvas>
+
+                <!-- Overlay Screen: Start / Game Over -->
+                <div id="gameOverlay" class="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex flex-col items-center justify-center gap-4 p-6 text-center z-10 transition-all">
+                    <div class="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 text-3xl mb-1">
+                        <i id="overlayIcon" class="fa-solid fa-person-running"></i>
+                    </div>
+                    <h2 id="overlayTitle" class="text-2xl font-bold font-tech text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
+                        AI 跑酷大冒險
+                    </h2>
+                    <p id="overlaySub" class="text-sm text-slate-300 max-w-md leading-relaxed">
+                        按下「開始遊戲」按鈕，對著鏡頭做出動作或使用方向鍵控制角色避開障礙物！
+                    </p>
+                    <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3 text-xs text-slate-400 max-w-md text-left space-y-1">
+                        <div class="text-emerald-400 font-semibold"><i class="fa-solid fa-arrow-up"></i> Class 1 (跳躍)：跳過地面障礙物 (尖刺/矮牆)</div>
+                        <div class="text-amber-400 font-semibold"><i class="fa-solid fa-arrow-down"></i> Class 2 (往下蹲)：避開高空飛行的障礙物 (無人機)</div>
+                        <div class="text-cyan-400 font-semibold"><i class="fa-solid fa-arrow-right"></i> Class 3 (前進)：保持正常前進速度</div>
+                    </div>
+                    <button id="overlayStartBtn" class="mt-2 px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold rounded-xl shadow-lg shadow-cyan-500/30 transition flex items-center gap-2">
+                        <i class="fa-solid fa-play"></i> 立即發動
+                    </button>
+                </div>
+
+            </div>
+
+            <!-- Rules Summary Card -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div class="bg-slate-800/40 border border-slate-800 p-3 rounded-xl flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 text-lg">
+                        <i class="fa-solid fa-person-arrow-up-from-line"></i>
+                    </div>
+                    <div>
+                        <div class="text-xs font-bold text-slate-200">Class 1: 跳躍</div>
+                        <div class="text-[11px] text-slate-400">避開地面紅色障礙物</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800/40 border border-slate-800 p-3 rounded-xl flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 text-lg">
+                        <i class="fa-solid fa-person-arrow-down-to-line"></i>
+                    </div>
+                    <div>
+                        <div class="text-xs font-bold text-slate-200">Class 2: 往下蹲</div>
+                        <div class="text-[11px] text-slate-400">避開高空紫色飛行物</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800/40 border border-slate-800 p-3 rounded-xl flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 text-lg">
+                        <i class="fa-solid fa-person-running"></i>
+                    </div>
+                    <div>
+                        <div class="text-xs font-bold text-slate-200">Class 3: 保持前進</div>
+                        <div class="text-[11px] text-slate-400">平穩狀態，持續累積分數</div>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800 bg-slate-950 py-3 text-center text-xs text-slate-500">
+        AI Motion Runner Game &copy; Powered by TensorFlow.js & Teachable Machine Image Model
+    </footer>
+
+    <script>
+        // ==========================================
+        // 1. Web Audio Synthesizer (Sound Effects)
+        // ==========================================
+        class SoundFX {
+            constructor() {
+                this.ctx = null;
+                this.enabled = true;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) this.ctx = new AudioCtx();
+                }
+            }
+
+            playTone(freq, type, duration, startVol = 0.1, endVol = 0.001) {
+                if (!this.enabled || !this.ctx) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                    gain.gain.setValueAtTime(startVol, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(endVol, this.ctx.currentTime + duration);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + duration);
+                } catch(e){}
+            }
+
+            playJump() {
+                if (!this.enabled || !this.ctx) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(450, this.ctx.currentTime + 0.15);
+                    gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + 0.15);
+                } catch(e){}
+            }
+
+            playCrouch() {
+                this.playTone(180, 'triangle', 0.12, 0.1, 0.01);
+            }
+
+            playHit() {
+                this.playTone(80, 'sawtooth', 0.25, 0.2, 0.001);
+            }
+
+            playCoin() {
+                if (!this.enabled || !this.ctx) return;
+                this.playTone(880, 'sine', 0.08, 0.1, 0.01);
+                setTimeout(() => this.playTone(1320, 'sine', 0.12, 0.1, 0.01), 60);
+            }
+        }
+
+        const soundFX = new SoundFX();
+
+        document.getElementById('toggleAudioBtn').addEventListener('click', () => {
+            soundFX.enabled = !soundFX.enabled;
+            const icon = document.getElementById('audioIcon');
+            const btn = document.getElementById('toggleAudioBtn');
+            if (soundFX.enabled) {
+                icon.className = 'fa-solid fa-volume-high';
+                btn.innerHTML = `<i id="audioIcon" class="fa-solid fa-volume-high"></i> 音效: 開`;
+            } else {
+                icon.className = 'fa-solid fa-volume-xmark';
+                btn.innerHTML = `<i id="audioIcon" class="fa-solid fa-volume-xmark"></i> 音效: 關`;
+            }
+        });
+
+        // ==========================================
+        // 2. Teachable Machine Integration
+        // ==========================================
+        let tmModel = null;
+        let webcam = null;
+        let isModelLoaded = false;
+        let maxPredictions = 0;
+        let lastFrameTime = performance.now();
+        let fps = 0;
+
+        // Action States: 'RUN' (Class3), 'JUMP' (Class1), 'CROUCH' (Class2)
+        let currentPose = 'RUN'; 
+        const CONFIDENCE_THRESHOLD = 0.78; // 信心度門檻
+
+        const loadModelBtn = document.getElementById('loadModelBtn');
+        const modelUrlInput = document.getElementById('modelUrlInput');
+        const modelStatusBadge = document.getElementById('modelStatusBadge');
+        const actionIndicator = document.getElementById('actionIndicator');
+        const currentPoseText = document.getElementById('currentPoseText');
+
+        loadModelBtn.addEventListener('click', async () => {
+            soundFX.init();
+            let url = modelUrlInput.value.trim();
+            if (!url) {
+                alert('請輸入 Teachable Machine 模型 URL！');
+                return;
+            }
+
+            if (!url.endsWith('/')) url += '/';
+            const modelURL = url + 'model.json';
+            const metadataURL = url + 'metadata.json';
+
+            try {
+                loadModelBtn.disabled = true;
+                loadModelBtn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> 載入模型中...`;
+                
+                modelStatusBadge.className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20";
+                modelStatusBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span> 模型載入中...`;
+
+                tmModel = await tmImage.load(modelURL, metadataURL);
+                maxPredictions = tmModel.getTotalClasses();
+
+                // Setup WebCam
+                const flip = true; 
+                webcam = new tmImage.Webcam(220, 160, flip); 
+                await webcam.setup(); 
+                await webcam.play();
+                
+                // Clear placeholder and append webcam canvas
+                const container = document.getElementById('webcamContainer');
+                container.innerHTML = '';
+                container.appendChild(webcam.canvas);
+                webcam.canvas.className = "w-full h-full object-cover rounded-xl";
+
+                // Populate Class Mapping Selectors
+                populateClassSelects(tmModel.getClassLabels());
+
+                isModelLoaded = true;
+                actionIndicator.style.opacity = '1';
+
+                modelStatusBadge.className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+                modelStatusBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400"></span> AI 模型運作中`;
+
+                loadModelBtn.innerHTML = `<i class="fa-solid fa-check text-emerald-400"></i> 模型已成功載入`;
+                loadModelBtn.className = "w-full py-2.5 px-4 bg-slate-800 text-slate-300 text-sm font-bold rounded-xl border border-slate-700 cursor-default";
+
+                // Start AI Prediction Loop
+                window.requestAnimationFrame(predictionLoop);
+
+            } catch (err) {
+                console.error("TM Load Error:", err);
+                alert("無法載入模型，請確認 URL 是否正確，或允許網絡鏡頭權限。");
+                loadModelBtn.disabled = false;
+                loadModelBtn.innerHTML = `<i class="fa-solid fa-microchip"></i> 載入並啟動攝影機`;
+                
+                modelStatusBadge.className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20";
+                modelStatusBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-400"></span> 載入失敗`;
+            }
+        });
+
+        function populateClassSelects(labels) {
+            const selects = ['mapClass1', 'mapClass2', 'mapClass3'];
+            selects.forEach(id => {
+                const el = document.getElementById(id);
+                el.innerHTML = `<option value="auto">自動匹配</option>`;
+                labels.forEach(label => {
+                    const opt = document.createElement('option');
+                    opt.value = label;
+                    opt.innerText = label;
+                    el.appendChild(opt);
+                });
+            });
+        }
+
+        async function predictionLoop() {
+            if (isModelLoaded && webcam) {
+                webcam.update();
+                await predict();
+
+                // Calculate FPS
+                const now = performance.now();
+                fps = Math.round(1000 / (now - lastFrameTime));
+                lastFrameTime = now;
+                document.getElementById('fpsCounter').innerText = `FPS: ${fps}`;
+
+                window.requestAnimationFrame(predictionLoop);
+            }
+        }
+
+        async function predict() {
+            const prediction = await tmModel.predict(webcam.canvas);
+            
+            let class1Prob = 0;
+            let class2Prob = 0;
+            let class3Prob = 0;
+
+            const labels = tmModel.getClassLabels();
+            
+            const sel1 = document.getElementById('mapClass1').value;
+            const sel2 = document.getElementById('mapClass2').value;
+            const sel3 = document.getElementById('mapClass3').value;
+
+            for (let i = 0; i < maxPredictions; i++) {
+                const p = prediction[i];
+                const lblLower = p.className.toLowerCase();
+
+                // Class 1 (Jump)
+                if ((sel1 !== 'auto' && p.className === sel1) || 
+                    (sel1 === 'auto' && (lblLower.includes('class1') || lblLower.includes('jump') || lblLower.includes('跳')))) {
+                    class1Prob = Math.max(class1Prob, p.probability);
+                }
+                // Class 2 (Crouch)
+                else if ((sel2 !== 'auto' && p.className === sel2) || 
+                         (sel2 === 'auto' && (lblLower.includes('class2') || lblLower.includes('crouch') || lblLower.includes('duck') || lblLower.includes('蹲')))) {
+                    class2Prob = Math.max(class2Prob, p.probability);
+                }
+                // Class 3 (Run / Normal)
+                else if ((sel3 !== 'auto' && p.className === sel3) || 
+                         (sel3 === 'auto' && (lblLower.includes('class3') || lblLower.includes('run') || lblLower.includes('walk') || lblLower.includes('前進') || lblLower.includes('走')))) {
+                    class3Prob = Math.max(class3Prob, p.probability);
+                } else {
+                    // Fallback distribution if classes don't match keywords
+                    if (i === 0) class1Prob = p.probability;
+                    else if (i === 1) class2Prob = p.probability;
+                    else if (i === 2) class3Prob = p.probability;
+                }
+            }
+
+            // Update UI Progress Bars
+            updateProbBar('probClass1', class1Prob);
+            updateProbBar('probClass2', class2Prob);
+            updateProbBar('probClass3', class3Prob);
+
+            // Action Determination with Smoothing logic
+            if (class1Prob >= CONFIDENCE_THRESHOLD && class1Prob > class2Prob && class1Prob > class3Prob) {
+                setPose('JUMP');
+            } else if (class2Prob >= CONFIDENCE_THRESHOLD && class2Prob > class1Prob && class2Prob > class3Prob) {
+                setPose('CROUCH');
+            } else {
+                setPose('RUN');
+            }
+        }
+
+        function updateProbBar(prefix, prob) {
+            const percentage = Math.round(prob * 100);
+            document.getElementById(`${prefix}Bar`).style.width = `${percentage}%`;
+            document.getElementById(`${prefix}Text`).innerText = `${percentage}%`;
+        }
+
+        function setPose(pose) {
+            if (currentPose === pose) return;
+            currentPose = pose;
+
+            currentPoseText.innerText = pose === 'JUMP' ? 'CLASS 1: 跳躍' : (pose === 'CROUCH' ? 'CLASS 2: 往下蹲' : 'CLASS 3: 前進');
+            
+            // Trigger runner character movement in game
+            if (gameActive && runner) {
+                if (pose === 'JUMP') {
+                    runner.triggerJump();
+                } else if (pose === 'CROUCH') {
+                    runner.triggerCrouch(true);
+                } else {
+                    runner.triggerCrouch(false);
+                }
+            }
+        }
+
+        // KeyListeners for manual testing
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'ArrowUp' || e.code === 'Space') {
+                setPose('JUMP');
+            } else if (e.code === 'ArrowDown') {
+                setPose('CROUCH');
+            } else if (e.code === 'ArrowRight') {
+                setPose('RUN');
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'ArrowDown') {
+                setPose('RUN');
+            }
+        });
+
+
+        // ==========================================
+        // 3. Canvas Runner Game Engine
+        // ==========================================
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // High DPI Canvas Resizing
+        function resizeCanvas() {
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        let gameActive = false;
+        let score = 0;
+        let highScore = localStorage.getItem('runner_high_score') || 0;
+        let lives = 3;
+        let gameSpeed = 6;
+        let frameCount = 0;
+
+        document.getElementById('highScoreText').innerText = String(highScore).padStart(5, '0');
+
+        // Player / Runner Class
+        class Runner {
+            constructor() {
+                this.width = 44;
+                this.height = 64;
+                this.x = 80;
+                this.groundY = 0;
+                this.y = 0;
+                this.velocityY = 0;
+                this.gravity = 0.85;
+                this.isJumping = false;
+                this.isCrouching = false;
+                this.animFrame = 0;
+            }
+
+            reset(canvasHeight) {
+                this.groundY = canvasHeight - 70;
+                this.y = this.groundY - this.height;
+                this.velocityY = 0;
+                this.isJumping = false;
+                this.isCrouching = false;
+            }
+
+            triggerJump() {
+                if (!this.isJumping) {
+                    this.velocityY = -16.5;
+                    this.isJumping = true;
+                    this.isCrouching = false;
+                    soundFX.playJump();
+                    createParticles(this.x + this.width / 2, this.groundY, '#38bdf8', 10);
+                }
+            }
+
+            triggerCrouch(crouchState) {
+                if (this.isJumping) return;
+                
+                if (crouchState && !this.isCrouching) {
+                    this.isCrouching = true;
+                    soundFX.playCrouch();
+                } else if (!crouchState && this.isCrouching) {
+                    this.isCrouching = false;
+                }
+            }
+
+            update(canvasHeight) {
+                this.groundY = canvasHeight - 70;
+
+                // Apply gravity
+                this.y += this.velocityY;
+                this.velocityY += this.gravity;
+
+                // Ground Collision
+                const currentHeight = this.isCrouching ? this.height * 0.55 : this.height;
+                if (this.y + currentHeight >= this.groundY) {
+                    this.y = this.groundY - currentHeight;
+                    this.velocityY = 0;
+                    this.isJumping = false;
+                }
+
+                this.animFrame += 0.2;
+            }
+
+            draw(ctx) {
+                ctx.save();
+
+                const drawHeight = this.isCrouching ? this.height * 0.55 : this.height;
+                const drawY = this.y;
+
+                // Shadow on Ground
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                ctx.beginPath();
+                ctx.ellipse(this.x + this.width / 2, this.groundY + 4, this.width / 2 + (this.isJumping ? -10 : 2), 6, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Cyber-themed Runner Character
+                // Body Glow
+                ctx.shadowColor = this.isJumping ? '#34d399' : (this.isCrouching ? '#fbbf24' : '#38bdf8');
+                ctx.shadowBlur = 12;
+
+                // Main Torso / Armor
+                ctx.fillStyle = this.isJumping ? '#10b981' : (this.isCrouching ? '#f59e0b' : '#0284c7');
+                ctx.beginPath();
+                ctx.roundRect(this.x, drawY, this.width, drawHeight, 10);
+                ctx.fill();
+
+                // Helmet / Visor
+                ctx.fillStyle = '#f8fafc';
+                const visorY = drawY + 8;
+                const visorH = this.isCrouching ? 10 : 14;
+                ctx.beginPath();
+                ctx.roundRect(this.x + 8, visorY, this.width - 12, visorH, 4);
+                ctx.fill();
+
+                // Visor Neon Light Line
+                ctx.strokeStyle = '#06b6d4';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(this.x + 12, visorY + visorH / 2);
+                ctx.lineTo(this.x + this.width - 8, visorY + visorH / 2);
+                ctx.stroke();
+
+                // Running Legs Motion lines when running
+                if (!this.isJumping && !this.isCrouching) {
+                    const legOffset = Math.sin(this.animFrame) * 8;
+                    ctx.fillStyle = '#0369a1';
+                    ctx.fillRect(this.x + 8 + legOffset, drawY + drawHeight - 10, 8, 12);
+                    ctx.fillRect(this.x + this.width - 16 - legOffset, drawY + drawHeight - 10, 8, 12);
+                }
+
+                ctx.restore();
+            }
+
+            getBounds() {
+                const currentHeight = this.isCrouching ? this.height * 0.55 : this.height;
+                return {
+                    x: this.x + 4,
+                    y: this.y + 4,
+                    width: this.width - 8,
+                    height: currentHeight - 8
+                };
+            }
+        }
+
+        // Obstacle Base Class
+        class Obstacle {
+            constructor(type, canvasWidth, canvasHeight) {
+                this.type = type; // 'GROUND' (requires JUMP) or 'HIGH' (requires CROUCH)
+                this.x = canvasWidth + 50;
+                this.width = type === 'GROUND' ? 36 : 48;
+                this.height = type === 'GROUND' ? 52 : 36;
+                
+                const groundY = canvasHeight - 70;
+                this.y = type === 'GROUND' ? groundY - this.height : groundY - 110;
+                
+                this.markedForDeletion = false;
+                this.color = type === 'GROUND' ? '#ef4444' : '#a855f7';
+                this.anim = 0;
+            }
+
+            update(speed) {
+                this.x -= speed;
+                this.anim += 0.1;
+                if (this.x + this.width < -50) {
+                    this.markedForDeletion = true;
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 10;
+
+                if (this.type === 'GROUND') {
+                    // Spikes / Ground Barrier
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, this.y + this.height);
+                    ctx.lineTo(this.x + this.width / 2, this.y);
+                    ctx.lineTo(this.x + this.width, this.y + this.height);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Inner Warning Stripe
+                    ctx.strokeStyle = '#fef08a';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+
+                } else {
+                    // Flying Drone / High Obstacle
+                    const floatY = this.y + Math.sin(this.anim) * 5;
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.roundRect(this.x, floatY, this.width, this.height, 8);
+                    ctx.fill();
+
+                    // Glowing Eye
+                    ctx.fillStyle = '#ef4444';
+                    ctx.beginPath();
+                    ctx.arc(this.x + 12, floatY + this.height / 2, 6, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Propeller Wings
+                    ctx.fillStyle = '#cbd5e1';
+                    ctx.fillRect(this.x - 6, floatY + 4, 8, 4);
+                    ctx.fillRect(this.x + this.width - 2, floatY + 4, 8, 4);
+                }
+
+                ctx.restore();
+            }
+
+            getBounds() {
+                return {
+                    x: this.x + 4,
+                    y: this.y + 4,
+                    width: this.width - 8,
+                    height: this.height - 8
+                };
+            }
+        }
+
+        // Particle System for Hits and Jumps
+        let particles = [];
+        function createParticles(x, y, color, count = 8) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: (Math.random() - 0.5) * 6,
+                    size: Math.random() * 4 + 2,
+                    color: color,
+                    life: 1.0
+                });
+            }
+        }
+
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.04;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+        }
+
+        function drawParticles(ctx) {
+            particles.forEach(p => {
+                ctx.save();
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+        }
+
+        // Instantiate Game Objects
+        const runner = new Runner();
+        let obstacles = [];
+
+        function spawnObstacle() {
+            // Randomly choose GROUND or HIGH obstacle
+            const type = Math.random() > 0.5 ? 'GROUND' : 'HIGH';
+            obstacles.push(new Obstacle(type, canvas.width, canvas.height));
+        }
+
+        function checkCollision(rect1, rect2) {
+            return (
+                rect1.x < rect2.x + rect2.width &&
+                rect1.x + rect1.width > rect2.x &&
+                rect1.y < rect2.y + rect2.height &&
+                rect1.y + rect1.height > rect2.y
+            );
+        }
+
+        function updateLivesUI() {
+            const container = document.getElementById('livesContainer');
+            container.innerHTML = '';
+            for (let i = 0; i < 3; i++) {
+                if (i < lives) {
+                    container.innerHTML += `<i class="fa-solid fa-heart text-rose-500"></i>`;
+                } else {
+                    container.innerHTML += `<i class="fa-regular fa-heart text-slate-600"></i>`;
+                }
+            }
+        }
+
+        function triggerScreenShake() {
+            const canvasEl = document.getElementById('gameCanvas');
+            canvasEl.classList.add('translate-x-1', 'translate-y-1');
+            setTimeout(() => canvasEl.classList.remove('translate-x-1', 'translate-y-1'), 100);
+        }
+
+        // Game Loop
+        function gameLoop() {
+            if (!gameActive) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            frameCount++;
+            score += 1;
+            document.getElementById('scoreText').innerText = String(score).padStart(5, '0');
+
+            // Increase Game Speed over time
+            if (frameCount % 400 === 0) {
+                gameSpeed += 0.5;
+            }
+
+            // Draw Parallax Ground & Synthwave Background
+            const groundY = canvas.height - 70;
+
+            // Sky gradient
+            const skyGradient = ctx.createLinearGradient(0, 0, 0, groundY);
+            skyGradient.addColorStop(0, '#0f172a');
+            skyGradient.addColorStop(1, '#1e293b');
+            ctx.fillStyle = skyGradient;
+            ctx.fillRect(0, 0, canvas.width, groundY);
+
+            // Ground Track
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+
+            // Glowing Neon Grid Line on Ground
+            ctx.strokeStyle = '#0284c7';
+            ctx.lineWidth = 3;
+            ctx.shadowColor = '#38bdf8';
+            ctx.shadowBlur = 8;
+            ctx.beginPath();
+            ctx.moveTo(0, groundY);
+            ctx.lineTo(canvas.width, groundY);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // Moving Grid Lines
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.15)';
+            ctx.lineWidth = 1;
+            const gridOffset = (frameCount * gameSpeed) % 40;
+            for (let x = -gridOffset; x < canvas.width; x += 40) {
+                ctx.beginPath();
+                ctx.moveTo(x, groundY);
+                ctx.lineTo(x - 20, canvas.height);
+                ctx.stroke();
+            }
+
+            // Update & Draw Runner
+            runner.update(canvas.height);
+            runner.draw(ctx);
+
+            // Spawn Obstacles
+            if (frameCount % Math.max(70, Math.floor(140 - gameSpeed * 5)) === 0) {
+                spawnObstacle();
+            }
+
+            // Update & Draw Obstacles
+            const runnerBounds = runner.getBounds();
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+                obs.update(gameSpeed);
+                obs.draw(ctx);
+
+                // Collision Check
+                if (checkCollision(runnerBounds, obs.getBounds())) {
+                    soundFX.playHit();
+                    createParticles(runner.x + runner.width / 2, runner.y + runner.height / 2, '#ef4444', 16);
+                    triggerScreenShake();
+
+                    lives -= 1;
+                    updateLivesUI();
+                    obstacles.splice(i, 1);
+
+                    if (lives <= 0) {
+                        endGame();
+                        return;
+                    }
+                } else if (obs.markedForDeletion) {
+                    obstacles.splice(i, 1);
+                }
+            }
+
+            // Update Particles
+            updateParticles();
+            drawParticles(ctx);
+
+            window.requestAnimationFrame(gameLoop);
+        }
+
+        const startGameBtn = document.getElementById('startGameBtn');
+        const restartGameBtn = document.getElementById('restartGameBtn');
+        const overlayStartBtn = document.getElementById('overlayStartBtn');
+        const gameOverlay = document.getElementById('gameOverlay');
+
+        function startGame() {
+            soundFX.init();
+            score = 0;
+            lives = 3;
+            gameSpeed = 6;
+            frameCount = 0;
+            obstacles = [];
+            particles = [];
+
+            updateLivesUI();
+            runner.reset(canvas.height);
+
+            gameActive = true;
+            gameOverlay.classList.add('opacity-0', 'pointer-events-none');
+            startGameBtn.classList.add('hidden');
+            restartGameBtn.classList.remove('hidden');
+
+            window.requestAnimationFrame(gameLoop);
+        }
+
+        function endGame() {
+            gameActive = false;
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('runner_high_score', highScore);
+                document.getElementById('highScoreText').innerText = String(highScore).padStart(5, '0');
+            }
+
+            document.getElementById('overlayIcon').className = "fa-solid fa-skull text-rose-400";
+            document.getElementById('overlayTitle').innerText = "GAME OVER";
+            document.getElementById('overlaySub').innerText = `最終得分：${score} 分！做得很棒，繼續練習動作吧！`;
+            overlayStartBtn.innerHTML = `<i class="fa-solid fa-rotate-right"></i> 再試一次`;
+
+            gameOverlay.classList.remove('opacity-0', 'pointer-events-none');
+            startGameBtn.classList.remove('hidden');
+            restartGameBtn.classList.add('hidden');
+        }
+
+        startGameBtn.addEventListener('click', startGame);
+        restartGameBtn.addEventListener('click', startGame);
+        overlayStartBtn.addEventListener('click', startGame);
+
+    </script>
+</body>
+</html>
